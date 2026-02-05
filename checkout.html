@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Secure Checkout | GebeyaMed</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f9; display: flex; justify-content: center; padding-top: 50px; }
+        .checkout-card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
+        .logo { color: #004a99; font-weight: bold; font-size: 24px; margin-bottom: 20px; }
+        .price-tag { font-size: 32px; color: #2ecc71; font-weight: 700; margin: 20px 0; }
+        .pay-btn { background: #2ecc71; color: white; border: none; padding: 15px 30px; border-radius: 8px; font-size: 18px; font-weight: 600; cursor: pointer; width: 100%; }
+        .details { color: #718096; margin-bottom: 30px; text-align: left; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+<div class="checkout-card">
+    <div class="logo">GEBEYAMED</div>
+    <h3>Complete Your Purchase</h3>
+    <p id="productName">Loading order details...</p>
+    
+    <div class="price-tag" id="productPrice">$0.00</div>
+
+    <div class="details">
+        <strong>Organization:</strong> <span id="hospName">...</span><br>
+        <strong>Reference:</strong> <span id="orderRef">...</span>
+    </div>
+
+    <button class="pay-btn" onclick="startChapaPayment()">Pay Now with Chapa</button>
+</div>
+
+<script>
+    // 1. Get the secret token from the URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+
+    // 2. Fetch order details using the token
+    async function loadOrder() {
+        if (!token) {
+            alert("Invalid or missing payment token.");
+            return;
+        }
+
+        // We need an API route for this! (I will add it to index.js next)
+        const res = await fetch(`/api/order-details/${token}`);
+        const data = await res.json();
+
+        document.getElementById('productName').innerText = data.product_name;
+        document.getElementById('productPrice').innerText = `$${parseFloat(data.unit_price).toLocaleString()}`;
+        document.getElementById('hospName').innerText = data.hospital_name;
+        document.getElementById('orderRef').innerText = token.substring(0, 8);
+    }
+
+function startChapaPayment() {
+    // Get the Chapa URL we passed in the email link
+    const urlParams = new URLSearchParams(window.location.search);
+    const payUrl = urlParams.get('pay_url');
+
+    if (payUrl) {
+        // Redirect the customer to Telebirr/CBEBirr screen
+        window.location.href = payUrl; 
+    } else {
+        alert("Payment link expired or invalid.");
+    }
+}
+
+    loadOrder();
+</script>
+</body>
+</html>

@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>GebeyaMed | Inventory Management</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 40px; background-color: #f4f7f6; }
+        
+        /* Header & Search Layout */
+        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #3498db; padding-bottom: 15px; margin-bottom: 20px; }
+        .header-right { display: flex; align-items: center; gap: 20px; }
+        
+        .search-box { display: flex; gap: 5px; }
+        .search-box input { padding: 10px; width: 220px; border: 1px solid #ddd; border-radius: 4px; }
+
+        h1 { color: #2c3e50; margin: 0; }
+        
+        /* Stats Dashboard */
+        .stats-container { display: flex; gap: 15px; margin-bottom: 30px; }
+        .stat-card { background: white; padding: 12px 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-left: 4px solid #3498db; flex: 1; }
+        .stat-card h4 { margin: 0; color: #7f8c8d; font-size: 11px; text-transform: uppercase; }
+        .stat-card p { margin: 3px 0 0; font-size: 20px; font-weight: bold; color: #2c3e50; }
+
+        .sales-btn-container { position: relative; display: inline-block; }
+        .nav-btn { padding: 10px 20px; background: #2c3e50; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 14px; }
+        
+        .badge {
+            position: absolute; top: -10px; right: -10px; background-color: #e74c3c; color: white; border-radius: 50%;
+            min-width: 20px; height: 20px; font-size: 11px; display: none; align-items: center; justify-content: center;
+            border: 2px solid white; z-index: 10;
+        }
+
+        .logout-btn { padding: 8px 12px; background: #95a5a6; color: white; border: none; border-radius: 5px; cursor: pointer; }
+
+        table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #3498db; color: white; }
+        
+        .add-section { background: #ecf0f1; padding: 25px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #dcdfe0; }
+        .add-section input { margin-right: 10px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        
+        .prod-img { width: 45px; height: 45px; object-fit: cover; border-radius: 4px; background: #eee; cursor: zoom-in; }
+
+        /* Zoom Modal */
+        .modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); }
+        .modal-content { margin: 5% auto; text-align: center; }
+        #zoomedImg { max-width: 80%; max-height: 80vh; border: 4px solid white; border-radius: 8px; }
+    </style>
+</head>
+<body>
+
+    <div id="zoomModal" class="modal" onclick="this.style.display='none'">
+        <div class="modal-content">
+            <img id="zoomedImg" src="">
+        </div>
+    </div>
+
+    <header>
+        <h1>GebeyaMed Inventory</h1>
+        <div class="header-right">
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search SKU or Name...">
+                <button onclick="searchInventory()" style="background: #2ecc71; color:white; border:none; padding: 10px; border-radius:4px; cursor:pointer;">🔍</button>
+            </div>
+            
+            <div class="sales-btn-container">
+                <a href="/sales" class="nav-link nav-btn">Sales Leads</a>
+                <div id="notifBadge" class="badge">0</div>
+            </div>
+            <button onclick="handleLogout()" class="logout-btn">Logout</button>
+        </div>
+    </header>
+
+    <div class="add-section">
+        <h3 style="margin-top:0; color:#2c3e50;">Add New Medical Equipment</h3>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+            <input type="text" id="newName" placeholder="Product Name">
+            <input type="text" id="newSku" placeholder="SKU">
+            <input type="text" id="newCat" placeholder="Category">
+            <input type="number" id="newPrice" placeholder="Price ($)">
+            <input type="number" id="newStock" placeholder="Stock">
+            <div style="display:flex; flex-direction:column;">
+                <label style="font-size: 11px; font-weight:bold; color:#7f8c8d;">UPLOAD PHOTO:</label>
+                <input type="file" id="newImage" accept="image/*" style="font-size:12px; border:none; padding:0;">
+            </div>
+            <button onclick="addProduct()" style="padding: 12px 25px; background: #3498db; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin-left: auto;">+ Save Product</button>
+        </div>
+    </div>
+
+    <div class="stats-container">
+        <div class="stat-card">
+            <h4>Inventory Count</h4>
+            <p id="statTotalItems">0</p>
+        </div>
+        <div class="stat-card">
+            <h4>Total Value (ETB)</h4>
+            <p id="statTotalValue">ETB 0.00</p>
+        </div>
+        <div class="stat-card" style="border-left-color: #e67e22;">
+            <h4>Low Stock Alert</h4>
+            <p id="statLowStock">0</p>
+        </div>
+    </div>
+
+    <table id="inventoryTable">
+        <thead>
+            <tr>
+                <th>Photo</th>
+                <th>Product Information</th>
+                <th>Category</th>
+                <th>Unit Price</th>
+                <th>Available Stock</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <script>
+        function init() {
+            loadInventory();
+            updateBadge();
+            setInterval(updateBadge, 10000);
+        }
+
+        function openZoom(src) {
+            document.getElementById('zoomedImg').src = src;
+            document.getElementById('zoomModal').style.display = 'block';
+        }
+
+        function loadInventory() {
+            fetch('/api/inventory')
+                .then(res => res.json())
+                .then(data => {
+                    const tbody = document.querySelector('#inventoryTable tbody');
+                    tbody.innerHTML = ''; 
+                    
+                    let totalVal = 0;
+                    let lowStockCount = 0;
+
+                    data.forEach(item => {
+                        totalVal += (item.unit_price * item.stock_quantity);
+                        if(item.stock_quantity < 5) lowStockCount++;
+
+                        const isLowStock = item.stock_quantity < 5;
+                        const stockStyle = isLowStock ? 'background: #fff5f5; color: #e74c3c; font-weight: bold;' : '';
+                        
+                        const imgPath = item.image_url ? item.image_url : '';
+                        const imgTag = imgPath 
+                            ? `<img src="${imgPath}" class="prod-img" onclick="openZoom('${imgPath}')">` 
+                            : `<div class="prod-img" style="display:flex;align-items:center;justify-content:center;font-size:9px;color:#999;background:#eee;">No Image</div>`;
+
+                        tbody.innerHTML += `<tr style="${isLowStock ? 'background:#fffafa' : ''}">
+                            <td>${imgTag}</td>
+                            <td><strong>${item.product_name}</strong><br><small style="color:#7f8c8d">SKU: ${item.sku || 'N/A'}</small></td>
+                            <td><span style="background:#eee; padding:3px 8px; border-radius:12px; font-size:12px;">${item.category}</span></td>
+                            <td>${parseFloat(item.unit_price).toFixed(2)} ETB</td>
+                            <td style="${stockStyle}">${isLowStock ? '⚠️ ' : ''}${item.stock_quantity} units</td>
+                            <td>
+                                <button onclick="sellItem('${item.product_id}', '${item.product_name}')" style="background:#2ecc71; color:white; border:none; padding:6px 12px; cursor:pointer; border-radius:4px; font-size:12px;">Sell</button>
+                                <button onclick="deleteItem('${item.product_id}')" style="background:none; color:#e74c3c; border:1px solid #e74c3c; padding:5px 10px; cursor:pointer; border-radius:4px; font-size:12px; margin-left:5px;">Delete</button>
+                            </td>
+                        </tr>`;
+                    });
+
+                    document.getElementById('statTotalItems').innerText = data.length;
+                    document.getElementById('statTotalValue').innerText = `ETB ${totalVal.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+                    document.getElementById('statLowStock').innerText = lowStockCount;
+                });
+        }
+
+        function updateBadge() {
+            fetch('/api/vendor/inquiries/count')
+                .then(res => res.json())
+                .then(data => {
+                    const badge = document.getElementById('notifBadge');
+                    const count = parseInt(data.count);
+                    if (count > 0) {
+                        badge.innerText = count;
+                        badge.style.display = 'flex';
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                });
+        }
+
+        async function addProduct() {
+            const formData = new FormData();
+            formData.append('product_name', document.getElementById('newName').value);
+            formData.append('sku', document.getElementById('newSku').value);
+            formData.append('category', document.getElementById('newCat').value);
+            formData.append('unit_price', document.getElementById('newPrice').value);
+            formData.append('stock_quantity', document.getElementById('newStock').value);
+            
+            const imageEl = document.getElementById('newImage');
+            if (imageEl.files[0]) formData.append('productImage', imageEl.files[0]);
+
+            const res = await fetch('/api/inventory/add', { method: 'POST', body: formData });
+            if(res.ok) {
+                loadInventory();
+                alert("Product Saved!");
+                ['newName','newSku','newCat','newPrice','newStock','newImage'].forEach(id => document.getElementById(id).value = '');
+            } else {
+                alert("Check all fields and try again.");
+            }
+        }
+
+        async function deleteProduct(id) {
+    if (confirm("Delete this product and all related inquiries?")) {
+        const res = await fetch(`/api/inventory/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+            loadInventory(); // Reload the table
+        } else {
+            alert("Error deleting product.");
+        }
+    }
+}
+
+        /* --- UPDATED SELL LOGIC: Prepares for Order Workflow --- */
+        function sellItem(id, name) {
+            if(confirm(`Confirm direct sale of ${name}? This will reduce stock by 1.`)) {
+                fetch(`/api/inventory/sell/${id}`, { 
+                    method: 'POST' 
+                }).then(res => {
+                    if(res.ok) {
+                        loadInventory();
+                        // Trigger a small success notification
+                        console.log(`Stock reduced for ${name}`);
+                    } else {
+                        alert("Stock Error: Could not complete sale.");
+                    }
+                });
+            }
+        }
+
+        async function deleteItem(id) {
+            if(!confirm("Remove this equipment from inventory?")) return;
+            const res = await fetch(`/api/inventory/${id}`, { method: 'DELETE' });
+            if(res.ok) loadInventory(); else alert("Could not delete. Check Sales Leads.");
+        }
+
+        async function handleLogout() {
+            await fetch('/api/auth/logout', { method: 'POST' });
+            window.location.href = '/login';
+        }
+
+        function searchInventory() {
+            const term = document.getElementById('searchInput').value;
+            fetch(`/api/inventory/search?q=${term}`).then(res => res.json()).then(data => {
+                const tbody = document.querySelector('#inventoryTable tbody');
+                tbody.innerHTML = '';
+                data.forEach(item => {
+                    const imgPath = item.image_url ? item.image_url : '';
+                    const imgTag = imgPath ? `<img src="${imgPath}" class="prod-img" onclick="openZoom('${imgPath}')">` : `<div class="prod-img"></div>`;
+                    tbody.innerHTML += `<tr>
+                        <td>${imgTag}</td>
+                        <td><strong>${item.product_name}</strong></td>
+                        <td>${item.category}</td>
+                        <td>${parseFloat(item.unit_price).toFixed(2)} ETB</td>
+                        <td>${item.stock_quantity} units</td>
+                        <td>
+                            <button onclick="sellItem('${item.product_id}', '${item.product_name}')" style="background:#2ecc71; color:white; border:none; padding:6px 12px; cursor:pointer; border-radius:4px;">Sell</button>
+                            <button onclick="deleteItem('${item.product_id}')" style="background:none; color:#e74c3c; border:1px solid #e74c3c; padding:5px 10px; cursor:pointer; border-radius:4px; margin-left:5px;">Delete</button>
+                        </td>
+                    </tr>`;
+                });
+            });
+        }
+
+        init();
+    </script>
+</body>
+</html>
