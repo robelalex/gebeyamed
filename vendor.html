@@ -77,7 +77,7 @@
             <input type="text" id="newName" placeholder="Product Name">
             <input type="text" id="newSku" placeholder="SKU">
             <input type="text" id="newCat" placeholder="Category">
-            <input type="number" id="newPrice" placeholder="Price ($)">
+            <input type="number" id="newPrice" placeholder="Price (ETB)">
             <input type="number" id="newStock" placeholder="Stock">
             <div style="display:flex; flex-direction:column;">
                 <label style="font-size: 11px; font-weight:bold; color:#7f8c8d;">UPLOAD PHOTO:</label>
@@ -157,7 +157,7 @@
                             <td>${parseFloat(item.unit_price).toFixed(2)} ETB</td>
                             <td style="${stockStyle}">${isLowStock ? '⚠️ ' : ''}${item.stock_quantity} units</td>
                             <td>
-                                <button onclick="sellItem('${item.product_id}', '${item.product_name}')" style="background:#2ecc71; color:white; border:none; padding:6px 12px; cursor:pointer; border-radius:4px; font-size:12px;">Sell</button>
+                                <button onclick="updateStock('${item.product_id}', '${item.product_name}')" style="background:#3498db; color:white; border:none; padding:6px 12px; cursor:pointer; border-radius:4px; font-size:12px;">+ Add Stock</button>
                                 <button onclick="deleteItem('${item.product_id}')" style="background:none; color:#e74c3c; border:1px solid #e74c3c; padding:5px 10px; cursor:pointer; border-radius:4px; font-size:12px; margin-left:5px;">Delete</button>
                             </td>
                         </tr>`;
@@ -205,32 +205,22 @@
             }
         }
 
-        async function deleteProduct(id) {
-    if (confirm("Delete this product and all related inquiries?")) {
-        const res = await fetch(`/api/inventory/${id}`, { method: 'DELETE' });
-        if (res.ok) {
-            loadInventory(); // Reload the table
-        } else {
-            alert("Error deleting product.");
-        }
-    }
-}
+        /* --- NEW UPDATE STOCK LOGIC --- */
+        function updateStock(id, name) {
+            const addQty = prompt(`How many units of ${name} do you want to add to stock?`, "10");
+            if (addQty === null || addQty === "" || isNaN(addQty)) return;
 
-        /* --- UPDATED SELL LOGIC: Prepares for Order Workflow --- */
-        function sellItem(id, name) {
-            if(confirm(`Confirm direct sale of ${name}? This will reduce stock by 1.`)) {
-                fetch(`/api/inventory/sell/${id}`, { 
-                    method: 'POST' 
-                }).then(res => {
-                    if(res.ok) {
-                        loadInventory();
-                        // Trigger a small success notification
-                        console.log(`Stock reduced for ${name}`);
-                    } else {
-                        alert("Stock Error: Could not complete sale.");
-                    }
-                });
-            }
+            fetch(`/api/inventory/update-stock/${id}`, { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ increment: parseInt(addQty) })
+            }).then(res => {
+                if(res.ok) {
+                    loadInventory();
+                } else {
+                    alert("Error updating stock.");
+                }
+            });
         }
 
         async function deleteItem(id) {
@@ -259,7 +249,7 @@
                         <td>${parseFloat(item.unit_price).toFixed(2)} ETB</td>
                         <td>${item.stock_quantity} units</td>
                         <td>
-                            <button onclick="sellItem('${item.product_id}', '${item.product_name}')" style="background:#2ecc71; color:white; border:none; padding:6px 12px; cursor:pointer; border-radius:4px;">Sell</button>
+                            <button onclick="updateStock('${item.product_id}', '${item.product_name}')" style="background:#3498db; color:white; border:none; padding:6px 12px; cursor:pointer; border-radius:4px;">+ Add Stock</button>
                             <button onclick="deleteItem('${item.product_id}')" style="background:none; color:#e74c3c; border:1px solid #e74c3c; padding:5px 10px; cursor:pointer; border-radius:4px; margin-left:5px;">Delete</button>
                         </td>
                     </tr>`;

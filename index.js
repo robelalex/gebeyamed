@@ -63,7 +63,7 @@ app.get('/vendor', authenticateToken, (req, res) => res.sendFile(path.join(__dir
 app.get('/sales', authenticateToken, (req, res) => res.sendFile(path.join(__dirname, 'sales.html')));
 app.get('/checkout', (req, res) => res.sendFile(path.join(__dirname, 'checkout.html')));
 
-// --- 1. THE FIXED INQUIRY ROUTE (UPDATED FOR QUANTITY) ---
+// --- 1. THE FIXED INQUIRY ROUTE ---
 app.post('/api/inquiry/:id', async (req, res) => {
     try {
         const { hospital_name, email, phone, quantity } = req.body;
@@ -90,8 +90,7 @@ app.get('/api/vendor/inquiries/count', authenticateToken, async (req, res) => {
     } catch (err) { res.status(500).send("Error"); }
 });
 
-// --- 3. SALES DATA LIST (Updated to include Quantity) ---
-// --- 3. SALES DATA LIST (Updated to include unit_price for the math to work) ---
+// --- 3. SALES DATA LIST ---
 app.get('/api/sales/leads', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(`
@@ -104,7 +103,7 @@ app.get('/api/sales/leads', authenticateToken, async (req, res) => {
                 pi.status, 
                 i.product_name, 
                 i.sku,
-                i.unit_price  -- <--- THIS MUST BE HERE
+                i.unit_price
             FROM product_inquiries pi
             JOIN inventory i ON pi.product_id = i.product_id
             ORDER BY pi.id DESC`);
@@ -125,7 +124,7 @@ app.delete('/api/inquiry/:id', authenticateToken, async (req, res) => {
     }
 });
 
-// --- THE SMART SUCCESS ROUTE (UPDATED: Subtracts Quantity and Shows Total) ---
+// --- THE SMART SUCCESS ROUTE ---
 app.get('/success', async (req, res) => {
     const tx_ref = req.query.trx_ref || req.query.tx_ref;
     if (!tx_ref) return res.status(400).send("No transaction reference found.");
@@ -145,10 +144,7 @@ app.get('/success', async (req, res) => {
         const order = orderData.rows[0];
         const totalPrice = order.unit_price * order.requested_quantity;
 
-        // 1. Mark as Paid
         await pool.query("UPDATE product_inquiries SET status = 'Payment Completed' WHERE id = $1", [inquiryId]);
-        
-        // 2. DECREASE STOCK BY REQUESTED QUANTITY
         await pool.query("UPDATE inventory SET stock_quantity = stock_quantity - $1 WHERE product_id = $2", [order.requested_quantity, order.product_id]);
 
         res.send(`
@@ -203,7 +199,7 @@ app.post('/api/inquiry/contact/:id', authenticateToken, async (req, res) => {
     } catch (err) { res.status(500).send('Error'); }
 });
 
-// --- 5. GENERATE PAYMENT (UPDATED: Calculates Price * Quantity) ---
+// --- 5. GENERATE PAYMENT ---
 app.post('/api/generate-payment/:inquiryId', authenticateToken, async (req, res) => {
     try {
         const { inquiryId } = req.params;
@@ -211,7 +207,7 @@ app.post('/api/generate-payment/:inquiryId', authenticateToken, async (req, res)
         const customRef = `tx-${inquiryId}-${Date.now()}`; 
 
         const details = await pool.query(`
-            SELECT pi.id, pi.contact_email, pi.hospital_name, pi.requested_quantity, i.product_name, i.unit_price 
+            SELECT pi.id, pi.contact_email, pi.contact_phone, pi.hospital_name, pi.requested_quantity, i.product_name, i.unit_price 
             FROM product_inquiries pi 
             JOIN inventory i ON pi.product_id = i.product_id 
             WHERE pi.id = $1`, [inquiryId]);
@@ -219,20 +215,28 @@ app.post('/api/generate-payment/:inquiryId', authenticateToken, async (req, res)
         if (details.rows.length === 0) return res.status(404).json({ message: "Inquiry not found" });
         
         const order = details.rows[0];
-        
-        // CALCULATE TOTAL: Price per unit * Number of units requested
-        const totalAmount = order.unit_price * order.requested_quantity;
+        const price = parseFloat(order.unit_price) || 0;
+        const qty = parseInt(order.requested_quantity) || 1;
+        const totalAmount = price * qty;
+
+        let formattedPhone = String(order.contact_phone || '').trim().replace(/\s+/g, '');
+        if (formattedPhone.startsWith('0')) {
+            formattedPhone = '+251' + formattedPhone.substring(1);
+        } else if (!formattedPhone.startsWith('+') && formattedPhone !== '') {
+            formattedPhone = '+251' + formattedPhone;
+        }
 
         const chapaResponse = await axios.post('https://api.chapa.co/v1/transaction/initialize', {
             amount: totalAmount,
             currency: 'ETB',
             email: order.contact_email,
+            phone_number: formattedPhone, 
             first_name: order.hospital_name,
             last_name: 'Customer',
             tx_ref: customRef,
-            callback_url: `http://localhost:3000/api/payment/webhook`, 
+            callback_url: `https://webhook.site/placeholder`, 
             return_url: `http://localhost:3000/success?trx_ref=${customRef}`,
-            "customization[title]": `Invoice for ${order.requested_quantity} x ${order.product_name}`,
+            "customization[title]": `Invoice for ${qty} x ${order.product_name}`,
         }, {
             headers: { Authorization: `Bearer ${process.env.CHAPA_SECRET_KEY}` }
         });
@@ -240,23 +244,28 @@ app.post('/api/generate-payment/:inquiryId', authenticateToken, async (req, res)
         if (chapaResponse.data.status === 'success') {
             const checkoutUrl = chapaResponse.data.data.checkout_url;
             await pool.query("UPDATE product_inquiries SET payment_token = $1, status = 'Invoice Sent' WHERE id = $2", [secretToken, inquiryId]);
+            
             const invitationLink = `http://localhost:3000/checkout?token=${secretToken}&pay_url=${encodeURIComponent(checkoutUrl)}`;
             
             await transporter.sendMail({
                 from: `"GebeyaMed Sales" <${process.env.EMAIL_USER}>`,
                 to: order.contact_email,
-                subject: `Invoice for ${order.requested_quantity} units of ${order.product_name}`,
+                subject: `Invoice for ${qty} units of ${order.product_name}`,
                 html: `<h3>Order Summary</h3>
                        <p>Product: ${order.product_name}</p>
-                       <p>Quantity: ${order.requested_quantity}</p>
+                       <p>Quantity: ${qty}</p>
                        <p>Total Amount: <strong>${totalAmount.toLocaleString()} ETB</strong></p>
                        <p>Please complete your payment here: <a href="${invitationLink}">${invitationLink}</a></p>`
             });
+            
             res.json({ message: "Invoice sent!" });
+        } else {
+            res.status(400).json({ message: "Chapa Error: " + chapaResponse.data.message });
         }
     } catch (err) { 
-        console.error(err);
-        res.status(500).send("Chapa Error"); 
+        console.error("CHAPA SAYS:", err.response ? err.response.data : err.message);
+        const errorMessage = err.response ? err.response.data.message : "Network Error";
+        res.status(500).json({ message: "Failed: " + errorMessage }); 
     }
 });
 
@@ -292,6 +301,22 @@ app.post('/api/inventory/add', authenticateToken, upload.single('productImage'),
         );
         res.sendStatus(200);
     } catch (err) { res.status(500).send("Error adding product"); }
+});
+
+// --- NEW: UPDATE STOCK ROUTE ---
+app.post('/api/inventory/update-stock/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { increment } = req.body;
+        await pool.query(
+            "UPDATE inventory SET stock_quantity = stock_quantity + $1 WHERE product_id = $2",
+            [increment, id]
+        );
+        res.sendStatus(200);
+    } catch (err) {
+        console.error("Stock Update Error:", err);
+        res.status(500).send("Error updating stock.");
+    }
 });
 
 app.delete('/api/inventory/:id', authenticateToken, async (req, res) => {
